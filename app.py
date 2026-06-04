@@ -827,7 +827,6 @@ st.markdown("""
 <div class="hero-wrap">
     <div class="hero-eyebrow">Computer vision · Leaf analysis</div>
     <h1 class="hero-title">Tobacco<br><em>Leaf Grader</em></h1>
-    <p class="hero-sub">Upload a photo of a tobacco leaf to instantly classify its grade using a trained machine learning model.</p>
 </div>
 <div class="hero-divider"><span>● ● ●</span></div>
 """, unsafe_allow_html=True)
@@ -839,8 +838,7 @@ if not grader_data:
     st.markdown("""
     <div class="error-pill">
         <strong>Grader model not found.</strong><br>
-        Run <code>model.ipynb</code> to generate <code>tobacco_grader.pkl</code>, then place it
-        in the same directory as this app.
+        Run <code>model.ipynb</code> to generate <code>tobacco_grader.pkl</code>.
     </div>
     """, unsafe_allow_html=True)
 else:
@@ -848,15 +846,6 @@ else:
     test_acc   = grader_data.get("test_acc", None)
     acc_str    = f" · {test_acc*100:.1f}% test accuracy" if test_acc else ""
     st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:8px;font-size:12px;
-                color:#3d6030;font-family:'DM Mono',monospace;margin-bottom:1rem">
-        <span class="status-dot dot-ok"></span>
-        Model loaded — {model_name}{acc_str}
-        &nbsp;·&nbsp;
-        <span style="color:{'#3d6030' if validator_data else '#6a4010'}">
-            {"✓ Validator ready" if validator_data else "⚠ Validator not loaded"}
-        </span>
-    </div>
     """, unsafe_allow_html=True)
 
 
