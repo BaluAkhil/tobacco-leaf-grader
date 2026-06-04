@@ -8,82 +8,502 @@ import pandas as pd
 from PIL import Image
 from skimage.feature import graycomatrix, graycoprops, local_binary_pattern
 
-st.set_page_config(page_title="Tobacco Leaf Grader", page_icon="🌿", layout="centered")
+st.set_page_config(
+    page_title="LeafGrade — Tobacco Classifier",
+    page_icon="🌿",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 
 MODEL_PATH     = "tobacco_grader.pkl"
 VALIDATOR_PATH = "tobacco_validator.pkl"
-DATASET_PATH   = r"C:\Users\BALU LOHITH REDDY\Downloads\archive\tobacco leaves"
 IMG_SIZE       = (224, 224)
 
+# ─────────────────────────────────────────────────────────────
+#  THEME / GLOBAL CSS
+# ─────────────────────────────────────────────────────────────
 st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
-#MainMenu, footer, header { visibility: hidden; }
-.stDeployButton { display: none; }
-.block-container { padding-top: 1.8rem; padding-bottom: 2rem; max-width: 700px; }
-html, body, [class*="css"] { font-family: 'Segoe UI', Arial, sans-serif; }
+/* ── Reset & Base ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
-[data-testid="stSidebar"] { background: #1c3d20; }
-[data-testid="stSidebar"] * { color: #dceedd !important; }
-[data-testid="stSidebar"] hr { border-color: #2e5c34 !important; }
+html, body, [data-testid="stAppViewContainer"],
+[data-testid="stMain"], .main { background: #0d1208 !important; }
 
-.stButton > button[kind="primary"] {
-    background: #2e7d32 !important; color: #fff !important;
-    border: none !important; border-radius: 7px !important;
-    font-size: 14px !important; font-weight: 600 !important;
-    padding: 0.55rem 1.2rem !important; width: 100%;
-}
-.stButton > button[kind="primary"]:hover { background: #1b5e20 !important; }
-
-div[data-testid="stHorizontalBlock"] .stButton button {
-    border-radius: 6px !important; border: 1px solid #ccc !important;
-    background: #fff !important; color: #333 !important;
-    font-size: 13px !important; font-weight: 500 !important;
-}
-div[data-testid="stHorizontalBlock"] .stButton button:hover {
-    border-color: #2e7d32 !important; color: #2e7d32 !important;
-    background: #f4fbf4 !important;
+[data-testid="stMainBlockContainer"] {
+    max-width: 780px !important;
+    padding: 0 1.5rem 4rem !important;
 }
 
-.result-card { border-radius: 10px; padding: 20px 18px; margin: 14px 0 8px; text-align: center; }
-.card-a { background: #fff8e1; border: 1.5px solid #f9a825; }
-.card-b { background: #e8f5e9; border: 1.5px solid #43a047; }
-.card-c { background: #fbe9e7; border: 1.5px solid #e53935; }
-.grade-name { font-size: 24px; font-weight: 700; margin: 2px 0; }
-.grade-type { font-size: 13px; color: #666; }
-.card-a .grade-name { color: #e65100; }
-.card-b .grade-name { color: #1b5e20; }
-.card-c .grade-name { color: #b71c1c; }
+section[data-testid="stMain"] > div { padding-top: 0 !important; }
 
-.warn-box {
-    background: #fff3e0; border: 1.5px solid #ff9800;
-    border-radius: 10px; padding: 16px 18px; margin: 14px 0;
-    font-size: 14px; color: #e65100;
+#MainMenu, footer, header,
+[data-testid="stToolbar"],
+[data-testid="stDecoration"] { display: none !important; }
+
+html, body, [class*="css"] {
+    font-family: 'DM Sans', sans-serif !important;
+    color: #c9d4c2 !important;
 }
-.mode-badge {
-    display: inline-block; background: #e8f5e9; color: #2e7d32;
-    font-size: 11px; font-weight: 600; padding: 2px 10px;
-    border-radius: 4px; border: 1px solid #c8e6c9; margin-bottom: 10px;
+
+/* ── Hero Header ──────────────────────────────── */
+.hero-wrap {
+    padding: 3.5rem 0 2.5rem;
+    text-align: center;
+    position: relative;
 }
+.hero-eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: .25em;
+    text-transform: uppercase;
+    color: #5a8a3c;
+    margin-bottom: 14px;
+}
+.hero-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    color: #e8f0df;
+    line-height: 1.1;
+    margin: 0 0 12px;
+    letter-spacing: -0.02em;
+}
+.hero-title em { color: #7dc354; font-style: italic; }
+.hero-sub {
+    font-size: 14px;
+    color: #7a9070;
+    max-width: 380px;
+    margin: 0 auto;
+    line-height: 1.6;
+}
+.hero-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 2rem 0;
+}
+.hero-divider::before, .hero-divider::after {
+    content: '';
+    flex: 1;
+    height: 0.5px;
+    background: #1e2d18;
+}
+.hero-divider span {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: #3a5030;
+    letter-spacing: .15em;
+}
+
+/* ── Cards / Surfaces ─────────────────────────── */
+.card {
+    background: #111a0c;
+    border: 0.5px solid #1e3018;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+}
+.card-elevated {
+    background: #141d0f;
+    border: 0.5px solid #253520;
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 32px rgba(0,0,0,.4);
+}
+
+/* ── Section Labels ───────────────────────────── */
 .sec-label {
-    font-size: 11px; font-weight: 600; color: #aaa;
-    text-transform: uppercase; letter-spacing: 0.07em; margin: 14px 0 5px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: #3d6030;
+    margin: 1.6rem 0 .6rem;
 }
-.tip-box {
-    background: #f5f5f5; border-left: 3px solid #2e7d32;
-    border-radius: 0 6px 6px 0; padding: 9px 12px;
-    font-size: 13px; color: #444; margin-top: 10px;
+
+/* ── Mode Selector ────────────────────────────── */
+.mode-rail {
+    display: flex;
+    gap: 8px;
+    background: #0a0f07;
+    border: 0.5px solid #1a2814;
+    border-radius: 12px;
+    padding: 5px;
+    margin-bottom: 1.2rem;
 }
-[data-testid="stFileUploader"] {
-    border: 1.5px dashed #ccc !important;
-    border-radius: 8px !important; background: #fafafa !important;
+.mode-btn {
+    flex: 1;
+    padding: 9px 0;
+    border-radius: 9px;
+    border: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .18s ease;
+    text-align: center;
+}
+.mode-btn.active {
+    background: #1e3a14;
+    color: #8dd65e;
+    border: 0.5px solid #2a5018;
+}
+.mode-btn.inactive {
+    background: transparent;
+    color: #4a6840;
+}
+
+/* ── File uploader ────────────────────────────── */
+[data-testid="stFileUploader"] > label { display: none; }
+[data-testid="stFileUploader"] > div {
+    background: #0a0f07 !important;
+    border: 1.5px dashed #1e3018 !important;
+    border-radius: 12px !important;
+    padding: 2.5rem 1rem !important;
+    transition: border-color .2s !important;
+}
+[data-testid="stFileUploader"] > div:hover {
+    border-color: #3a6028 !important;
+}
+[data-testid="stFileUploader"] span {
+    color: #4a6840 !important;
+    font-size: 13px !important;
+}
+[data-testid="stFileUploader"] small {
+    color: #2e4525 !important;
+    font-size: 11px !important;
+}
+
+/* ── Buttons ──────────────────────────────────── */
+.stButton > button {
+    font-family: 'DM Sans', sans-serif !important;
+    font-weight: 500 !important;
+    border-radius: 10px !important;
+    transition: all .18s ease !important;
+}
+.stButton > button[kind="primary"] {
+    background: #2a5c1a !important;
+    color: #b8e896 !important;
+    border: 0.5px solid #3a7422 !important;
+    font-size: 14px !important;
+    padding: .65rem 1.4rem !important;
+    letter-spacing: .02em !important;
+    width: 100% !important;
+}
+.stButton > button[kind="primary"]:hover {
+    background: #336e1f !important;
+    color: #cdf0a0 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 16px rgba(80,180,40,.15) !important;
+}
+.stButton > button[kind="secondary"],
+.stButton > button:not([kind]) {
+    background: #0d1208 !important;
+    color: #5a7850 !important;
+    border: 0.5px solid #1e3018 !important;
+    font-size: 13px !important;
+    padding: .55rem 1rem !important;
+}
+.stButton > button:not([kind]):hover {
+    border-color: #3a5a2a !important;
+    color: #8aaa78 !important;
+    background: #111a0c !important;
+}
+
+/* ── Tabs ─────────────────────────────────────── */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: #0a0f07 !important;
+    border: 0.5px solid #1a2814 !important;
+    border-radius: 12px !important;
+    padding: 4px !important;
+    gap: 4px !important;
+    margin-bottom: 1.4rem !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 9px !important;
+    color: #3d5535 !important;
+    font-family: 'DM Sans', sans-serif !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 20px !important;
+    transition: all .15s !important;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+    background: #1e3a14 !important;
+    color: #8dd65e !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+    display: none !important;
+}
+[data-testid="stTabs"] [data-baseweb="tab-border"] {
+    display: none !important;
+}
+
+/* ── Result cards ─────────────────────────────── */
+.result-shell {
+    border-radius: 16px;
+    padding: 2rem 1.5rem;
+    margin: 1rem 0;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+.grade-a-bg { background: #1a1400; border: 0.5px solid #4a3800; }
+.grade-b-bg { background: #0d1a0a; border: 0.5px solid #1e4014; }
+.grade-c-bg { background: #1a0c0c; border: 0.5px solid #4a1818; }
+.rejected-bg { background: #0f0f12; border: 0.5px solid #2a2040; }
+
+.grade-letter {
+    font-family: 'DM Serif Display', serif;
+    font-size: 72px;
+    line-height: 1;
+    margin-bottom: 4px;
+    letter-spacing: -0.04em;
+}
+.grade-a-txt { color: #e8a020; }
+.grade-b-txt { color: #6dc44a; }
+.grade-c-txt { color: #d45050; }
+.rejected-txt { color: #6060a0; }
+
+.grade-label {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.grade-desc { font-size: 12px; color: #7a9070; }
+.conf-badge {
+    display: inline-block;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    margin-top: 10px;
+    letter-spacing: .05em;
+}
+.conf-a { background: #2a1e00; color: #c89030; border: 0.5px solid #4a3010; }
+.conf-b { background: #0e2008; color: #5aac38; border: 0.5px solid #1e4014; }
+.conf-c { background: #200e0e; color: #c04040; border: 0.5px solid #3c1010; }
+
+/* ── Probability row ──────────────────────────── */
+.prob-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 0.5px solid #141d0f;
+}
+.prob-row:last-child { border-bottom: none; }
+.prob-label {
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 64px;
+    color: #7a9070;
+}
+.prob-bar-track {
+    flex: 1;
+    height: 4px;
+    background: #141d0f;
+    border-radius: 2px;
+    overflow: hidden;
+}
+.prob-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width .5s ease;
+}
+.prob-bar-a { background: #c08020; }
+.prob-bar-b { background: #5aac38; }
+.prob-bar-c { background: #c04040; }
+.prob-pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    min-width: 40px;
+    text-align: right;
+    color: #5a7850;
+}
+.prob-pct.winner { color: #c9d4c2; font-weight: 500; }
+
+/* ── Tip / info box ───────────────────────────── */
+.info-pill {
+    background: #0e1c0a;
+    border: 0.5px solid #1e3818;
+    border-left: 2px solid #3a7020;
+    border-radius: 0 8px 8px 0;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #7a9c68;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+.warn-pill {
+    background: #120e00;
+    border: 0.5px solid #3a2c00;
+    border-left: 2px solid #8a6000;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #c09040;
+    margin: 10px 0;
+    line-height: 1.5;
+}
+.error-pill {
+    background: #120808;
+    border: 0.5px solid #3a1414;
+    border-left: 2px solid #8a2020;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #c06060;
+    margin: 10px 0;
+    line-height: 1.5;
+}
+
+/* ── Metrics ──────────────────────────────────── */
+[data-testid="stMetric"] {
+    background: #0e160a !important;
+    border: 0.5px solid #1a2c14 !important;
+    border-radius: 12px !important;
+    padding: 12px 14px !important;
+}
+[data-testid="stMetricLabel"] {
+    font-family: 'DM Mono', monospace !important;
+    font-size: 10px !important;
+    letter-spacing: .12em !important;
+    color: #3d6030 !important;
+    text-transform: uppercase !important;
+}
+[data-testid="stMetricValue"] {
+    font-family: 'DM Serif Display', serif !important;
+    font-size: 28px !important;
+    color: #b4d898 !important;
+}
+
+/* ── Dataframe ────────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border: 0.5px solid #1a2814 !important;
+    border-radius: 12px !important;
+    overflow: hidden !important;
+}
+
+/* ── Progress bar ─────────────────────────────── */
+[data-testid="stProgressBar"] > div {
+    background: #0a0f07 !important;
+    border-radius: 4px !important;
+}
+[data-testid="stProgressBar"] > div > div {
+    background: linear-gradient(90deg, #2a5c1a, #5aac38) !important;
+    border-radius: 4px !important;
+}
+
+/* ── Spinner ──────────────────────────────────── */
+[data-testid="stSpinner"] { color: #5aac38 !important; }
+
+/* ── Text input ───────────────────────────────── */
+[data-testid="stTextInput"] input {
+    background: #0a0f07 !important;
+    border: 0.5px solid #1e3018 !important;
+    border-radius: 10px !important;
+    color: #c9d4c2 !important;
+    font-family: 'DM Mono', monospace !important;
+    font-size: 12px !important;
+    padding: 10px 14px !important;
+}
+[data-testid="stTextInput"] input:focus {
+    border-color: #3a6028 !important;
+    box-shadow: 0 0 0 2px rgba(80,160,40,.12) !important;
+}
+[data-testid="stTextInput"] label { display: none !important; }
+
+/* ── Camera ───────────────────────────────────── */
+[data-testid="stCameraInput"] > div {
+    background: #0a0f07 !important;
+    border: 0.5px solid #1e3018 !important;
+    border-radius: 12px !important;
+}
+[data-testid="stCameraInput"] label { display: none !important; }
+
+/* ── Sidebar ──────────────────────────────────── */
+[data-testid="stSidebar"] {
+    background: #080e05 !important;
+    border-right: 0.5px solid #1a2814 !important;
+}
+[data-testid="stSidebar"] * { color: #7a9070 !important; }
+
+/* ── Download btn ─────────────────────────────── */
+[data-testid="stDownloadButton"] button {
+    background: #0d1208 !important;
+    color: #5a8840 !important;
+    border: 0.5px solid #1e3018 !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-family: 'DM Mono', monospace !important;
+    letter-spacing: .04em !important;
+}
+
+/* ── Image ────────────────────────────────────── */
+[data-testid="stImage"] img {
+    border-radius: 12px !important;
+    border: 0.5px solid #1e3018 !important;
+}
+
+/* ── Upload placeholder ───────────────────────── */
+.drop-zone {
+    background: #0a0f07;
+    border: 1.5px dashed #1e3018;
+    border-radius: 14px;
+    padding: 60px 20px;
+    text-align: center;
+    transition: border-color .2s;
+}
+.drop-icon {
+    font-size: 36px;
+    margin-bottom: 10px;
+    opacity: .5;
+}
+.drop-text {
+    font-size: 13px;
+    color: #3a5530;
+    line-height: 1.6;
+}
+
+/* ── Status dot ───────────────────────────────── */
+.status-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.dot-ok  { background: #4aaa28; box-shadow: 0 0 6px rgba(74,170,40,.5); }
+.dot-err { background: #aa3030; }
+.dot-warn { background: #aa7020; }
+
+/* ── Grade legend pills ───────────────────────── */
+.legend-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 0.5px solid #111a0c;
+    font-size: 13px;
+}
+.legend-row:last-child { border-bottom: none; }
+.legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    flex-shrink: 0;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
-#  EXACT FEATURE EXTRACTION FROM notebook  (187 features)
-#  Do NOT change these functions — they must match the notebook
+#  FEATURE EXTRACTION — exactly matching notebook (187 features)
 # ─────────────────────────────────────────────────────────────
 
 def remove_background(img_bgr):
@@ -132,9 +552,7 @@ def color_features(img_bgr, mask):
 
 
 def texture_features(img_bgr, mask):
-    # NOTE: matches the notebook's second texture_features that trained the model.
-    # Each GLCM property: 12 raw values + 4 stats = 16 per prop x 4 props = 64
-    # + entropy(2) + sobel(3) + laplacian(1) = 70 total  [NOT 22]
+    """70 features — matches the second (final) definition in notebook."""
     gray  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray  = cv2.resize(gray, (256, 256))
     feats = []
@@ -142,20 +560,19 @@ def texture_features(img_bgr, mask):
                          angles=[0, np.pi/4, np.pi/2, 3*np.pi/4],
                          levels=256, symmetric=True, normed=True)
     for prop in ['contrast','correlation','energy','homogeneity']:
-        vals = graycoprops(glcm, prop).flatten()   # 12 values (3 dist x 4 angles)
-        feats.extend([float(v) for v in vals])     # +12 raw values
+        vals = graycoprops(glcm, prop).flatten()
+        feats.extend([float(v) for v in vals])
         feats += [float(np.mean(vals)), float(np.std(vals)),
-                  float(np.min(vals)),  float(np.max(vals))]  # +4 stats
-    # 4 props x 16 = 64
+                  float(np.min(vals)),  float(np.max(vals))]
     eps     = 1e-10
     entropy = -np.sum(glcm*np.log2(glcm+eps), axis=(0,1)).flatten()
-    feats  += [float(np.mean(entropy)), float(np.std(entropy))]   # +2
+    feats  += [float(np.mean(entropy)), float(np.std(entropy))]
     sx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
     sy = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
     gm = np.sqrt(sx**2+sy**2).flatten()
-    feats += [float(np.mean(gm)), float(np.std(gm)), float(np.percentile(gm,75))]  # +3
-    feats.append(float(np.var(cv2.Laplacian(gray, cv2.CV_64F))))   # +1
-    return np.array(feats, dtype=np.float32)  # total = 70
+    feats += [float(np.mean(gm)), float(np.std(gm)), float(np.percentile(gm,75))]
+    feats.append(float(np.var(cv2.Laplacian(gray, cv2.CV_64F))))
+    return np.array(feats, dtype=np.float32)  # 70
 
 
 def shape_features(mask):
@@ -283,99 +700,79 @@ def extract_features(img_bgr):
 
 
 # ─────────────────────────────────────────────────────────────
-#  BACKGROUND REMOVAL FOR DISPLAY
-#  Produces a clean white-background preview shown to the user.
-#  Uses HSV threshold first, GrabCut as fallback for non-white
-#  backgrounds (outdoor / coloured table / coloured paper).
-# ─────────────────────────────────────────────────────────────
-def remove_bg_for_display(pil_img):
-    """
-    Returns (original_pil, bg_removed_pil, leaf_coverage_pct)
-    """
-    img_rgb  = np.array(pil_img.convert("RGB"))
-    img_bgr  = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-
-    # Resize for display only (keep aspect ratio, max 600px wide)
-    h, w   = img_bgr.shape[:2]
-    scale  = min(600/w, 800/h, 1.0)
-    dw, dh = int(w*scale), int(h*scale)
-    disp   = cv2.resize(img_bgr, (dw, dh))
-
-    # ── Method 1: White-paper HSV threshold ──────────────────
-    hsv  = cv2.cvtColor(disp, cv2.COLOR_BGR2HSV)
-    bg   = cv2.inRange(hsv, np.array([0, 0, 185]), np.array([180, 45, 255]))
-    k    = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
-    bg   = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, k)
-    bg   = cv2.morphologyEx(bg, cv2.MORPH_OPEN,  k)
-    mask = cv2.bitwise_not(bg)
-
-    # Keep largest connected component (the leaf)
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
-    if n > 1:
-        largest = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
-        mask    = np.uint8(labels == largest) * 255
-
-    fg_ratio = np.sum(mask > 0) / (dw * dh)
-
-    # ── Method 2: GrabCut fallback (non-white background) ────
-    if fg_ratio < 0.08 or fg_ratio > 0.92:
-        gc_mask   = np.zeros((dh, dw), dtype=np.uint8)
-        margin    = max(10, int(min(dh, dw) * 0.05))
-        rect      = (margin, margin, dw - 2*margin, dh - 2*margin)
-        bgd_model = np.zeros((1, 65), np.float64)
-        fgd_model = np.zeros((1, 65), np.float64)
-        try:
-            cv2.grabCut(disp, gc_mask, rect, bgd_model, fgd_model,
-                        5, cv2.GC_INIT_WITH_RECT)
-            gc_mask2 = np.where(
-                (gc_mask == 2) | (gc_mask == 0), 0, 255
-            ).astype(np.uint8)
-            if np.sum(gc_mask2 > 0) > np.sum(mask > 0):
-                mask = gc_mask2
-        except Exception:
-            pass
-
-    # ── Smooth mask edges ─────────────────────────────────────
-    mask = cv2.GaussianBlur(mask, (7, 7), 0)
-    _, mask = cv2.threshold(mask, 127, 255, cv2.THRESH_BINARY)
-
-    # ── Composite onto white canvas ───────────────────────────
-    alpha  = mask.astype(float) / 255.0
-    alpha3 = np.stack([alpha]*3, axis=-1)
-    white  = np.ones_like(disp) * 255
-    result = (disp * alpha3 + white * (1 - alpha3)).astype(np.uint8)
-
-    orig_pil   = Image.fromarray(cv2.cvtColor(disp,   cv2.COLOR_BGR2RGB))
-    result_pil = Image.fromarray(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
-    coverage   = round(np.sum(mask > 0) / (dw * dh) * 100, 1)
-
-    return orig_pil, result_pil, coverage
-
-
-# ─────────────────────────────────────────────────────────────
-#  RULE-BASED VALIDATOR (from notebook Cell 10)
+#  RULE-BASED VALIDATOR
 # ─────────────────────────────────────────────────────────────
 def rule_based_check(img_bgr):
-    """Returns (is_valid: bool, reason: str)"""
+    """
+    Multi-stage validator. Returns (is_valid: bool, reason: str).
+
+    Checks (in order):
+      1. Foreground coverage — too little or too much → reject
+      2. Blank / grey sheet  — very low saturation → reject
+      3. Skin-tone / face    — flesh-hue cluster dominant → reject
+      4. Green/yellow dominance — tobacco leaves are green or gold,
+                                  NOT red/blue/grey dominant → reject
+      5. Vein texture score  — Gabor response too weak → reject
+      6. Hue variance        — uniform-hue objects (plastic bags,
+                                paper) have very low hue spread → reject
+    """
     img = cv2.resize(img_bgr, IMG_SIZE)
     _, mask = remove_background(img)
     fg_ratio = np.sum(mask > 0) / (IMG_SIZE[0] * IMG_SIZE[1])
 
+    # ── 1. Coverage ───────────────────────────────────────────
     if fg_ratio < 0.08:
-        return False, "No leaf detected. Please place a tobacco leaf on white paper and scan again."
+        return False, "No leaf detected — place the tobacco leaf on a plain white or light background."
     if fg_ratio > 0.95:
-        return False, "The image looks like a blank surface. Please scan the leaf on white paper only."
+        return False, "Image appears to be a plain surface — no leaf visible."
 
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    if np.mean(hsv[:,:,1]) < 18:
-        return False, "Image looks like a blank white or grey sheet, not a leaf."
+    h_ch = hsv[:, :, 0].flatten().astype(np.float32)
+    s_ch = hsv[:, :, 1].flatten().astype(np.float32)
+    v_ch = hsv[:, :, 2].flatten().astype(np.float32)
 
+    # ── 2. Blank / grey sheet ─────────────────────────────────
+    if np.mean(s_ch) < 18:
+        return False, "Image looks like a blank white or grey sheet — no leaf detected."
+
+    # ── 3. Skin-tone / face detection ─────────────────────────
+    # Human skin: H ∈ [0,25] ∪ [160,180] (wraps), S ∈ [30,170], V > 80
+    skin_mask_lower = cv2.inRange(hsv, np.array([0,  30, 80]), np.array([25, 170, 255]))
+    skin_mask_upper = cv2.inRange(hsv, np.array([160,30, 80]), np.array([180,170, 255]))
+    skin_mask = cv2.bitwise_or(skin_mask_lower, skin_mask_upper)
+    skin_ratio = np.sum(skin_mask > 0) / (IMG_SIZE[0] * IMG_SIZE[1])
+    if skin_ratio > 0.18:
+        return False, "This looks like a photo of a person, not a tobacco leaf. Please upload a leaf image."
+
+    # ── 4. Colour plausibility — leaf must be green/yellow/brown
+    # Tobacco: H roughly 15–90 (gold → yellow → green)
+    # Reject if blue/purple/red/grey dominates the foreground
+    if np.any(mask > 0):
+        h_fg = hsv[:, :, 0][mask > 0].astype(np.float32)
+        s_fg = hsv[:, :, 1][mask > 0].astype(np.float32)
+        v_fg = hsv[:, :, 2][mask > 0].astype(np.float32)
+    else:
+        h_fg, s_fg, v_fg = h_ch, s_ch, v_ch
+
+    # Hue range for tobacco leaves: 10–100  (gold=20, green=60, olive/dark=40)
+    leaf_hue_px  = np.sum((h_fg >= 10) & (h_fg <= 100))
+    non_leaf_hue = len(h_fg) - leaf_hue_px
+    if len(h_fg) > 0 and non_leaf_hue / len(h_fg) > 0.65:
+        return False, "The dominant colour does not match a tobacco leaf (expected gold, green, or brown tones)."
+
+    # ── 5. Vein / fine-texture Gabor score ───────────────────
     gray   = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    kernel = cv2.getGaborKernel((21,21), 4.0, 0, 10.0, 0.5, 0, cv2.CV_32F)
+    kernel = cv2.getGaborKernel((21, 21), 4.0, 0, 10.0, 0.5, 0, cv2.CV_32F)
     resp   = cv2.filter2D(gray, cv2.CV_32F, kernel)
-    vscore = float(np.mean(np.abs(resp[mask>0]))) if np.any(mask>0) else 0.0
+    vscore = float(np.mean(np.abs(resp[mask > 0]))) if np.any(mask > 0) else 0.0
     if vscore < 1.5:
-        return False, "No vein pattern detected. This does not appear to be a leaf."
+        return False, "No vein pattern detected — this does not appear to be a tobacco leaf."
+
+    # ── 6. Hue variance — uniform objects (plastic, paper) ───
+    # Real leaves have diverse hue even within a single grade.
+    # A plastic bag or coloured paper has very low hue std.
+    if len(h_fg) > 100 and np.std(h_fg) < 4.0 and np.mean(s_fg) > 40:
+        return False, "Image appears to be a uniform-coloured object, not a leaf."
 
     return True, "ok"
 
@@ -393,25 +790,13 @@ grader_data, validator_data = load_models()
 
 
 # ─────────────────────────────────────────────────────────────
-#  FULL TWO-STAGE PREDICTION
+#  PREDICTION
 # ─────────────────────────────────────────────────────────────
 def predict(img_bgr):
-    """
-    Stage 1 : Rule-based check (blank paper / no vein / no saturation)
-    Stage 2 : Grade classifier  ->  A / B / C
-
-    NOTE: One-Class SVM validator removed from hard-reject path.
-    It caused false rejections of real tobacco leaves (over-fitted to
-    training image conditions). Rule-based checks are sufficient and
-    more reliable in practice.
-    """
-    # Stage 1 — rule-based only (fast, reliable)
     valid, reason = rule_based_check(img_bgr)
     if not valid:
         return {"is_tobacco": False, "warning": reason,
                 "grade": None, "proba": None}
-
-    # Stage 2 — grade classifier
     feats = extract_features(img_bgr)
     model = grader_data["model"]
     pred  = model.predict([feats])[0]
@@ -421,132 +806,107 @@ def predict(img_bgr):
 
 
 # ─────────────────────────────────────────────────────────────
+#  CONSTANTS
+# ─────────────────────────────────────────────────────────────
 GRADES = {
-    0: ("Grade A", "Gold",            "card-a", "#f9a825"),
-    1: ("Grade B", "Yellowish Green", "card-b", "#43a047"),
-    2: ("Grade C", "Dark Brown",      "card-c", "#e53935"),
+    0: ("Grade A", "Gold",            "grade-a", "#e8a020"),
+    1: ("Grade B", "Yellowish-Green", "grade-b", "#6dc44a"),
+    2: ("Grade C", "Dark Brown",      "grade-c", "#d45050"),
 }
-TIPS = {
-    0: "Premium quality — suitable for high-value tobacco products.",
-    1: "Medium quality — acceptable for standard blends.",
-    2: "Lower grade — may be sold at a reduced price.",
+GRADE_TIPS = {
+    0: "Premium quality — ideal for high-value tobacco products and export.",
+    1: "Standard quality — well-suited for mainstream blends.",
+    2: "Lower grade — consider blending or reduced-price markets.",
 }
-
+PROB_COLORS = ["prob-bar-a", "prob-bar-b", "prob-bar-c"]
 
 # ─────────────────────────────────────────────────────────────
-#  SIDEBAR
+#  HERO
 # ─────────────────────────────────────────────────────────────
-with st.sidebar:
+st.markdown("""
+<div class="hero-wrap">
+    <div class="hero-eyebrow">Computer vision · Leaf analysis</div>
+    <h1 class="hero-title">Tobacco<br><em>Leaf Grader</em></h1>
+    <p class="hero-sub">Upload a photo of a tobacco leaf to instantly classify its grade using a trained machine learning model.</p>
+</div>
+<div class="hero-divider"><span>● ● ●</span></div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────
+#  MODEL STATUS BANNER
+# ─────────────────────────────────────────────────────────────
+if not grader_data:
     st.markdown("""
-    <div style="padding:16px 4px 10px">
-        <div style="font-size:18px;font-weight:700;color:#e8f5e9">Tobacco Grader</div>
-    </div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # Model status
-    col_g, col_v = st.columns(2)
-    col_g.markdown(
-        f"<div style='font-size:11px;background:{'#2d5a32' if grader_data else '#5a2d2d'};"
-        f"border-radius:5px;padding:5px 8px;text-align:center'>"
-        f"{'✅' if grader_data else '❌'} Grader</div>",
-        unsafe_allow_html=True
-    )
-    col_v.markdown(
-        f"<div style='font-size:11px;background:{'#2d5a32' if validator_data else '#5a4a2d'};"
-        f"border-radius:5px;padding:5px 8px;text-align:center'>"
-        f"{'✅' if validator_data else '⚠️'} Validator</div>",
-        unsafe_allow_html=True
-    )
-    if not grader_data:
-        st.caption("Run model.ipynb to generate tobacco_grader.pkl")
-    if not validator_data:
-        st.caption("tobacco_validator.pkl missing — validator disabled")
-
-    st.markdown("---")
-    st.markdown(
-        "<div style='font-size:12px;font-weight:600;color:#a5d6a7;"
-        "text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px'>Grade reference</div>",
-        unsafe_allow_html=True
-    )
-    for _, (label, typ, _, col) in GRADES.items():
-        st.markdown(
-            f"<div style='display:flex;align-items:center;gap:10px;"
-            f"padding:6px 0;border-bottom:1px solid #2e5c34'>"
-            f"<div style='width:10px;height:10px;border-radius:2px;"
-            f"background:{col};flex-shrink:0'></div>"
-            f"<div><div style='font-size:13px;font-weight:600'>{label}</div>"
-            f"<div style='font-size:11px;color:#81c784'>{typ}</div></div></div>",
-            unsafe_allow_html=True
-        )
-
-    dataset_input = DATASET_PATH
+    <div class="error-pill">
+        <strong>Grader model not found.</strong><br>
+        Run <code>model.ipynb</code> to generate <code>tobacco_grader.pkl</code>, then place it
+        in the same directory as this app.
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    model_name = grader_data.get("model_name", "Unknown")
+    test_acc   = grader_data.get("test_acc", None)
+    acc_str    = f" · {test_acc*100:.1f}% test accuracy" if test_acc else ""
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px;
+                color:#3d6030;font-family:'DM Mono',monospace;margin-bottom:1rem">
+        <span class="status-dot dot-ok"></span>
+        Model loaded — {model_name}{acc_str}
+        &nbsp;·&nbsp;
+        <span style="color:{'#3d6030' if validator_data else '#6a4010'}">
+            {"✓ Validator ready" if validator_data else "⚠ Validator not loaded"}
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
-#  MAIN
+#  TABS
 # ─────────────────────────────────────────────────────────────
-st.markdown("## Tobacco Leaf Grader")
-st.markdown(
-    "<p style='color:#888;font-size:13px;margin-top:-8px;margin-bottom:18px'>"
-    "Upload a photo or use your camera to identify the leaf grade instantly."
-    "</p>", unsafe_allow_html=True
-)
-
-tab1, tab2, tab3 = st.tabs(["Classify leaf", "Batch test", "History"])
+tab1, tab2, tab3 = st.tabs(["  Classify  ", "  Batch test  ", "  History  "])
 
 
-# ═══════════════════════
+# ═══════════════════════════════════════════════════
 #  TAB 1 — Classify
-# ═══════════════════════
+# ═══════════════════════════════════════════════════
 with tab1:
 
-    for k, v in [("mode","upload"),("img_pil",None),
-                 ("pred_result",None),("last_fname",None)]:
+    for k, v in [("mode","upload"), ("img_pil",None),
+                 ("pred_result",None), ("last_fname",None)]:
         if k not in st.session_state:
             st.session_state[k] = v
-    # Reset scan mode (removed) to upload
-    if st.session_state.mode == "scan":
-        st.session_state.mode = "upload"
 
-    # ── Mode buttons ──────────────────────────────────────────
-    st.markdown("<div class='sec-label'>Select input method</div>",
-                unsafe_allow_html=True)
+    # ── Mode selector ─────────────────────────────
+    st.markdown("<div class='sec-label'>Input method</div>", unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Upload file", use_container_width=True):
-            st.session_state.update(mode="upload", img_pil=None,
-                                    pred_result=None)
+        if st.button("⬆  Upload photo", use_container_width=True,
+                     key="btn_upload"):
+            st.session_state.update(mode="upload", img_pil=None, pred_result=None)
     with c2:
-        if st.button("Take photo", use_container_width=True):
-            st.session_state.update(mode="camera", img_pil=None,
-                                    pred_result=None)
+        if st.button("📷  Take photo", use_container_width=True,
+                     key="btn_camera"):
+            st.session_state.update(mode="camera", img_pil=None, pred_result=None)
 
-    badge_map = {"upload":"Upload file","camera":"Take photo"}
-    st.markdown(
-        f"<div class='mode-badge'>{badge_map[st.session_state.mode]}</div>",
-        unsafe_allow_html=True
-    )
-    st.markdown("---")
+    mode = st.session_state.mode
 
-    # ── Input widget ──────────────────────────────────────────
+    # ── Input ─────────────────────────────────────
+    st.markdown("<div class='sec-label'>Image</div>", unsafe_allow_html=True)
     img_pil = None
-    mode    = st.session_state.mode
 
     if mode == "upload":
-        st.markdown("<div class='sec-label'>Upload image</div>",
-                    unsafe_allow_html=True)
-        f = st.file_uploader("Choose leaf photo", type=["jpg","jpeg","png"],
-                              label_visibility="collapsed", key="file_up")
+        f = st.file_uploader(
+            "Upload", type=["jpg","jpeg","png"],
+            label_visibility="collapsed", key="file_up"
+        )
         if f:
             if st.session_state.last_fname != f.name:
                 st.session_state.pred_result = None
                 st.session_state.last_fname  = f.name
             img_pil = Image.open(f)
 
-    elif mode == "camera":
-        st.markdown("<div class='sec-label'>Camera</div>", unsafe_allow_html=True)
-        st.caption("Point at the leaf and press the capture button.")
+    else:  # camera
+        st.caption("Point the camera at the leaf and press the capture button.")
         cam = st.camera_input("Camera", label_visibility="collapsed", key="cam_cap")
         if cam:
             img_pil = Image.open(cam)
@@ -554,72 +914,47 @@ with tab1:
                 st.session_state.pred_result = None
                 st.session_state.last_fname  = "cam"
 
-
     if img_pil:
         st.session_state.img_pil = img_pil
 
-    # ── Preview + background removal + predict button ─────────
+    # ── Preview ────────────────────────────────────
     if st.session_state.get("img_pil"):
         pil = st.session_state.img_pil
 
-        # Run background removal for display
-        with st.spinner("Removing background..."):
-            orig_pil, clean_pil, coverage = remove_bg_for_display(pil)
+        # Resize for display only (no bg removal — as requested)
+        img_rgb  = np.array(pil.convert("RGB"))
+        h, w     = img_rgb.shape[:2]
+        scale    = min(640/w, 640/h, 1.0)
+        disp_rgb = cv2.resize(img_rgb, (int(w*scale), int(h*scale)))
+        st.image(Image.fromarray(disp_rgb), use_container_width=True)
 
-        # Show before / after side by side
-        st.markdown("<div class='sec-label'>Preview</div>", unsafe_allow_html=True)
-        col_orig, col_clean = st.columns(2)
-        with col_orig:
-            st.markdown(
-                "<div style='font-size:11px;color:#aaa;text-align:center;"
-                "margin-bottom:4px'>Original</div>",
-                unsafe_allow_html=True
-            )
-            st.image(orig_pil, use_container_width=True)
-
-        with col_clean:
-            st.markdown(
-                f"<div style='font-size:11px;color:#2e7d32;text-align:center;"
-                f"margin-bottom:4px'>Background removed ({coverage}% leaf)</div>",
-                unsafe_allow_html=True
-            )
-            st.image(clean_pil, use_container_width=True)
-
-        # Coverage warning
-        if coverage < 8:
-            st.warning("Very little leaf detected in the image. "
-                       "Make sure the leaf is visible against the background.")
-        elif coverage > 92:
-            st.warning("Background could not be fully separated. "
-                       "Try placing the leaf on plain white paper.")
-
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
-        btn_col, clr_col = st.columns([4, 1])
+        st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+        btn_col, clr_col = st.columns([5, 1])
         with btn_col:
-            go = st.button("Predict grade", type="primary",
+            go = st.button("Analyse leaf →", type="primary",
                            use_container_width=True, key="go_btn")
         with clr_col:
-            if st.button("Clear", use_container_width=True, key="clr_btn"):
+            if st.button("✕", use_container_width=True, key="clr_btn",
+                         help="Clear image"):
                 st.session_state.update(img_pil=None, pred_result=None,
                                         last_fname=None)
                 st.rerun()
 
         if go:
             if not grader_data:
-                st.error("Grader model not loaded. Run model.ipynb first.")
+                st.markdown(
+                    '<div class="error-pill">Grader model not loaded — run model.ipynb first.</div>',
+                    unsafe_allow_html=True)
             else:
-                # Predict on the CLEAN (background-removed) image
-                # so the model sees the same image as the display
-                with st.spinner("Analysing..."):
+                with st.spinner("Analysing…"):
                     try:
-                        # Use the bg-removed image for prediction
-                        clean_arr = np.array(clean_pil.convert("RGB"))
-                        bgr       = cv2.cvtColor(clean_arr, cv2.COLOR_RGB2BGR)
-                        result    = predict(bgr)
+                        bgr    = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+                        result = predict(bgr)
                         st.session_state.pred_result = result
                     except Exception as e:
-                        st.error(f"Error during analysis: {e}")
+                        st.markdown(
+                            f'<div class="error-pill">Error during analysis: {e}</div>',
+                            unsafe_allow_html=True)
 
                 # Save to history
                 r = st.session_state.pred_result
@@ -627,163 +962,243 @@ with tab1:
                     if "history" not in st.session_state:
                         st.session_state.history = []
                     pi = r["grade"]
-                    pb = r["proba"]
                     st.session_state.history.append({
                         "File":       st.session_state.last_fname or mode,
-                        "Method":     badge_map[mode],
+                        "Method":     "Upload" if mode=="upload" else "Camera",
                         "Grade":      GRADES[pi][0],
                         "Type":       GRADES[pi][1],
-                        "Confidence": f"{pb[pi]*100:.1f}%",
+                        "Confidence": f"{r['proba'][pi]*100:.1f}%",
                     })
 
     else:
         st.markdown("""
-        <div style="border:1.5px dashed #ddd;border-radius:10px;
-                    padding:50px 20px;text-align:center;background:#fafafa">
-            <div style="font-size:14px;color:#bbb">
-                No image selected. Choose a method above.
-            </div>
-        </div>""", unsafe_allow_html=True)
+        <div class="drop-zone">
+            <div class="drop-icon">🌿</div>
+            <div class="drop-text">No image selected.<br>Choose a method above to get started.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ── Result display ────────────────────────────────────────
+    # ── Result ─────────────────────────────────────
     r = st.session_state.get("pred_result")
     if r is not None:
-        st.markdown("---")
-        st.markdown("<div class='sec-label'>Result</div>", unsafe_allow_html=True)
+        st.markdown("<div class='sec-label' style='margin-top:1.4rem'>Result</div>",
+                    unsafe_allow_html=True)
 
         if not r["is_tobacco"]:
-            # Warning — not a tobacco leaf
             st.markdown(f"""
-            <div class="warn-box">
-                <div style="font-size:16px;font-weight:700;margin-bottom:4px">
-                    Not a tobacco leaf
-                </div>
-                <div>{r['warning']}</div>
-            </div>""", unsafe_allow_html=True)
+            <div class="result-shell rejected-bg">
+                <div class="grade-letter rejected-txt">?</div>
+                <div class="grade-label" style="color:#8080c0">Not a tobacco leaf</div>
+                <div class="grade-desc" style="margin-top:6px">{r['warning']}</div>
+            </div>
+            """, unsafe_allow_html=True)
 
         else:
             pi    = r["grade"]
             pb    = r["proba"]
-            label, typ, card_cls, col = GRADES[pi]
+            label, typ, slug, col = GRADES[pi]
             conf  = pb[pi] * 100
+            letter = label.split()[-1]  # "A", "B", or "C"
 
+            # Result card
             st.markdown(f"""
-            <div class="result-card {card_cls}">
-                <div class="grade-name">{label}</div>
-                <div class="grade-type">{typ} leaf &nbsp;|&nbsp; {conf:.1f}% confidence</div>
-            </div>""", unsafe_allow_html=True)
+            <div class="result-shell {slug}-bg">
+                <div class="grade-letter {slug}-txt">{letter}</div>
+                <div class="grade-label" style="color:{col}">{label} — {typ}</div>
+                <div class="grade-desc">Detected with</div>
+                <div class="conf-badge conf-{letter.lower()}">{conf:.1f}% confidence</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-            st.progress(int(conf))
-
-            st.markdown("<div class='sec-label' style='margin-top:12px'>Breakdown</div>",
+            # Probability breakdown
+            st.markdown("<div class='sec-label' style='margin-top:1rem'>Grade probabilities</div>",
                         unsafe_allow_html=True)
-            for i, (lbl, t, _, c) in GRADES.items():
-                p  = pb[i] * 100
-                wt = "600" if i == pi else "400"
-                r1, r2, r3 = st.columns([2, 5, 1])
-                r1.markdown(
-                    f"<div style='font-size:13px;font-weight:{wt};padding-top:3px'>{lbl}</div>",
-                    unsafe_allow_html=True)
-                r2.progress(int(p))
-                r3.markdown(
-                    f"<div style='font-size:13px;font-weight:{wt};text-align:right;padding-top:3px'>{p:.1f}%</div>",
-                    unsafe_allow_html=True)
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            for i, (lbl, t, s, c) in GRADES.items():
+                pct      = pb[i] * 100
+                is_win   = (i == pi)
+                win_cls  = "winner" if is_win else ""
+                ltr      = lbl.split()[-1]
+                st.markdown(f"""
+                <div class="prob-row">
+                    <span class="prob-label" style="color:{'#c9d4c2' if is_win else ''}">
+                        {lbl}
+                    </span>
+                    <div class="prob-bar-track">
+                        <div class="prob-bar-fill prob-bar-{ltr.lower()}"
+                             style="width:{pct:.1f}%"></div>
+                    </div>
+                    <span class="prob-pct {win_cls}">{pct:.1f}%</span>
+                </div>
+                """, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            st.markdown(f"<div class='tip-box'>{TIPS[pi]}</div>", unsafe_allow_html=True)
-
-
-# ═══════════════════════
-#  TAB 2 — Batch
-# ═══════════════════════
-with tab2:
-    st.markdown("<p style='color:#888;font-size:13px'>Run predictions on all images in a folder.</p>",
+            # Tip
+            st.markdown(
+                f'<div class="info-pill">{GRADE_TIPS[pi]}</div>',
                 unsafe_allow_html=True)
 
-    folder = st.text_input("Folder path",
-                            os.path.join(dataset_input, "gold"),
-                            key="b_folder")
 
-    if st.button("Run batch", type="primary", key="b_run"):
+# ═══════════════════════════════════════════════════
+#  TAB 2 — Batch
+# ═══════════════════════════════════════════════════
+with tab2:
+    st.markdown(
+        "<p style='color:#4a6840;font-size:13px;margin-top:-.4rem;margin-bottom:1.2rem'>"
+        "Run predictions on every image in a folder and download the results as CSV.</p>",
+        unsafe_allow_html=True)
+
+    st.markdown("<div class='sec-label'>Folder path</div>", unsafe_allow_html=True)
+    folder = st.text_input("folder", value="", placeholder="/path/to/leaf/images",
+                            label_visibility="collapsed", key="b_folder")
+
+    if st.button("Run batch prediction →", type="primary", key="b_run"):
         if not grader_data:
-            st.error("Grader model not loaded.")
-        elif not os.path.isdir(folder):
-            st.error(f"Folder not found: {folder}")
+            st.markdown('<div class="error-pill">Grader model not loaded.</div>',
+                        unsafe_allow_html=True)
+        elif not folder or not os.path.isdir(folder):
+            st.markdown('<div class="warn-pill">Folder not found — check the path above.</div>',
+                        unsafe_allow_html=True)
         else:
             files = (glob.glob(os.path.join(folder,"*.jpg"))  +
                      glob.glob(os.path.join(folder,"*.jpeg")) +
                      glob.glob(os.path.join(folder,"*.png")))
             if not files:
-                st.warning("No images found.")
+                st.markdown('<div class="warn-pill">No JPG/PNG images found in that folder.</div>',
+                            unsafe_allow_html=True)
             else:
                 bar  = st.progress(0, text=f"0 / {len(files)}")
                 rows = []
-                for i, f in enumerate(files):
+                for i, fp in enumerate(files):
                     try:
-                        img    = cv2.imread(f)
+                        img    = cv2.imread(fp)
                         result = predict(img)
                         if result["is_tobacco"]:
                             pi   = result["grade"]
                             pb   = result["proba"]
-                            conf = round(pb[pi]*100, 1)
                             rows.append({
-                                "File":       os.path.basename(f),
-                                "Is Tobacco": "Yes",
+                                "File":       os.path.basename(fp),
+                                "Tobacco":    "Yes",
                                 "Grade":      GRADES[pi][0],
                                 "Type":       GRADES[pi][1],
-                                "Confidence": f"{conf}%",
-                                "A%": f"{pb[0]*100:.1f}",
-                                "B%": f"{pb[1]*100:.1f}",
-                                "C%": f"{pb[2]*100:.1f}",
+                                "Confidence": f"{pb[pi]*100:.1f}%",
+                                "A%":         f"{pb[0]*100:.1f}",
+                                "B%":         f"{pb[1]*100:.1f}",
+                                "C%":         f"{pb[2]*100:.1f}",
                             })
                         else:
                             rows.append({
-                                "File": os.path.basename(f), "Is Tobacco": "No",
-                                "Grade":"N/A","Type":"N/A",
-                                "Confidence":"N/A",
+                                "File": os.path.basename(fp),
+                                "Tobacco":"No",
+                                "Grade":"—","Type":"—","Confidence":"—",
                                 "A%":"","B%":"","C%":"",
                             })
                     except Exception:
                         pass
-                    bar.progress((i+1)/len(files), text=f"{i+1} / {len(files)}")
+                    bar.progress((i+1)/len(files),
+                                 text=f"Processing {i+1} / {len(files)}")
                 bar.empty()
 
-                df = pd.DataFrame(rows)
-                accepted = len(df[df["Is Tobacco"]=="Yes"])
-                rejected = len(df[df["Is Tobacco"]=="No"])
+                df       = pd.DataFrame(rows)
+                accepted = len(df[df["Tobacco"]=="Yes"])
+                rejected = len(df) - accepted
+                a_count  = len(df[df["Grade"]=="Grade A"])
+                b_count  = len(df[df["Grade"]=="Grade B"])
+                c_count  = len(df[df["Grade"]=="Grade C"])
 
-                c1,c2,c3,c4,c5 = st.columns(5)
-                c1.metric("Total",    len(df))
-                c2.metric("Accepted", accepted)
-                c3.metric("Grade A",  len(df[df["Grade"]=="Grade A"]))
-                c4.metric("Grade B",  len(df[df["Grade"]=="Grade B"]))
-                c5.metric("Grade C",  len(df[df["Grade"]=="Grade C"]))
+                m1,m2,m3,m4,m5,m6 = st.columns(6)
+                m1.metric("Total",    len(df))
+                m2.metric("Accepted", accepted)
+                m3.metric("Rejected", rejected)
+                m4.metric("Grade A",  a_count)
+                m5.metric("Grade B",  b_count)
+                m6.metric("Grade C",  c_count)
 
                 if rejected:
-                    st.warning(f"{rejected} image(s) rejected — not tobacco leaves.")
+                    st.markdown(
+                        f'<div class="warn-pill">{rejected} image(s) rejected — '
+                        f'not identified as tobacco leaves.</div>',
+                        unsafe_allow_html=True)
 
+                st.markdown("<div class='sec-label'>Results</div>", unsafe_allow_html=True)
                 st.dataframe(df, use_container_width=True, hide_index=True)
-                st.download_button("Download CSV",
-                                   df.to_csv(index=False).encode(),
-                                   "batch_results.csv", "text/csv")
+                st.download_button(
+                    "↓  Download CSV",
+                    df.to_csv(index=False).encode(),
+                    "batch_results.csv", "text/csv")
 
 
-# ═══════════════════════
+# ═══════════════════════════════════════════════════
 #  TAB 3 — History
-# ═══════════════════════
+# ═══════════════════════════════════════════════════
 with tab3:
     hist = st.session_state.get("history", [])
     if not hist:
-        st.info("No predictions yet — classify a leaf in the first tab.")
+        st.markdown("""
+        <div class="drop-zone">
+            <div class="drop-icon">📋</div>
+            <div class="drop-text">No predictions yet.<br>Classify a leaf in the first tab to see history here.</div>
+        </div>
+        """, unsafe_allow_html=True)
     else:
+        st.markdown(
+            f"<p style='color:#4a6840;font-size:13px;margin-bottom:1rem'>"
+            f"{len(hist)} prediction(s) this session</p>",
+            unsafe_allow_html=True)
         df_h = pd.DataFrame(hist)
-        st.write(f"{len(df_h)} prediction(s) this session")
         st.dataframe(df_h, use_container_width=True, hide_index=True)
-        dl, cl = st.columns([1, 4])
-        with dl:
-            st.download_button("Download",
-                               df_h.to_csv(index=False).encode(),
-                               "history.csv", "text/csv")
-        with cl:
-            if st.button("Clear history"):
+        dl_col, cl_col, _ = st.columns([1, 1, 3])
+        with dl_col:
+            st.download_button(
+                "↓  Download",
+                df_h.to_csv(index=False).encode(),
+                "history.csv", "text/csv")
+        with cl_col:
+            if st.button("Clear", key="clr_hist"):
                 st.session_state.history = []
                 st.rerun()
+
+
+# ─────────────────────────────────────────────────────────────
+#  GRADE REFERENCE SIDEBAR
+# ─────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+    <div style="padding:1.2rem 0 .8rem;font-family:'DM Serif Display',serif;
+                font-size:18px;color:#a0c880">Grade Reference</div>
+    """, unsafe_allow_html=True)
+
+    for _, (label, typ, slug, col) in GRADES.items():
+        st.markdown(f"""
+        <div class="legend-row">
+            <div class="legend-dot" style="background:{col}"></div>
+            <div>
+                <div style="font-size:13px;font-weight:600;color:#c9d4c2">{label}</div>
+                <div style="font-size:11px;color:#4a6840">{typ}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="margin-top:1.2rem;font-family:'DM Mono',monospace;font-size:10px;
+                color:#2a4020;letter-spacing:.12em;text-transform:uppercase">
+        Features
+    </div>
+    <div style="font-size:12px;color:#3a5830;line-height:1.8;margin-top:.5rem">
+        Color · 57<br>
+        Texture · 70<br>
+        Shape · 10<br>
+        Vein · 16<br>
+        Damage · 8<br>
+        LBP · 26<br>
+        <span style="color:#2a4020">─────────</span><br>
+        Total · 187
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("""
+    <div style="font-size:11px;color:#2a4020;line-height:1.7">
+        Place leaf on a plain white or light background for best results.
+    </div>
+    """, unsafe_allow_html=True)
